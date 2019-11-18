@@ -1,0 +1,184 @@
+#load necessary libraries
+```{r}
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(gains)
+```
+
+
+#load data
+```{r}
+Opioids.df<-read.csv("Narrowed Project Data.csv", header = TRUE)
+```
+
+
+
+#filter out useless values
+```{r}
+filtered.df<-Opioids.df[Opioids.df$anyhlti2!=94 & Opioids.df$anyhlti2!=97 & Opioids.df$anyhlti2!=98 
+                        & Opioids.df$eduhighcat!= 5,]
+```
+
+
+#convert data to factors
+```{r}
+factors.df<-as.data.frame(filtered.df[,c(1,3,11,12,13,14,16,19,18,20,21)])
+
+factors.df$govtprog <- factor(factors.df$govtprog, levels = c(2, 1), 
+                              labels = c("No", "Yes"))
+
+factors.df$coutyp4 <- factor(factors.df$coutyp4, levels = c(1, 2,3), 
+                             labels = c("City","Suburb", "Rural"))
+
+factors.df$income <- factor(factors.df$income, levels = c(1, 2,3,4), 
+                            labels = c("Low","MedLow","MedHigh","High"), ordered = TRUE)
+
+factors.df$eduhighcat <- factor(factors.df$eduhighcat, levels = c(1,2,3,4), 
+                                labels = c("SomeHigh","High","SomeColl","Coll"))
+
+factors.df$anyhlti2 <- factor(factors.df$anyhlti2, levels = c(2,1), 
+                              labels = c("No","Yes"))
+
+factors.df$wrkdrghlp <- factor(factors.df$wrkdrghlp, levels = c(2,1), 
+                               labels = c("No","Yes"))
+
+factors.df$irsex <- factor(factors.df$irsex, levels = c(1,2), 
+                           labels = c("Male","Female"))
+
+factors.df$catag3 <- factor(factors.df$catag3, levels = c(1,2,3,4,5), 
+                            labels = c("Minor","YoungAd","MedYoungAd","MidAge","Older"), ordered = TRUE)
+
+factors.df$newrace2 <- factor(factors.df$newrace2, levels = c(1,2,3,4,5,6,7), 
+                              labels = c("White","AfrAm","NativeAm","PacIslnd","Asian","Multi","Hispanic"))
+
+
+
+```
+
+
+#narrow data down (can control which variables are statistically significant)
+```{r}
+select.var <- c(1,4,5,6,8)
+set.seed(1)
+
+# oversample treated
+train.index <- sample(c(1:dim(factors.df)[1]), dim(factors.df)[1]*0.6, prob = ifelse(factors.df$TREATED4OPIOIDS==1, 0.9, .4))
+train.df <- factors.df[train.index, select.var]
+valid.df <- factors.df[-train.index, select.var]
+```
+
+
+
+#run regression and summary
+```{r}
+logit.reg <- glm(TREATED4OPIOIDS ~ ., data = train.df, family = "binomial") 
+
+summary(logit.reg)
+```
+
+COnfusion matrix
+```{r}
+pred <- predict(logit.reg, valid.df)
+factorpred<-as.factor(ifelse(pred > 0.5, 1, 0))
+factortarget<-  factor(valid.df$TREATED4OPIOIDS, levels = c(1, 0))
+confusionMatrix(factorpred,factortarget )
+```
+
+
+lift chart
+```{r}
+pred <- predict(logit.reg, valid.df, conf.int = .99)
+gain <- gains(valid.df$TREATED4OPIOIDS, pred, groups = 100)
+plot(c(0,gain$cume.pct.of.total*sum(valid.df$TREATED4OPIOIDS))~
+c(0,gain$cume.obs),
+xlab="# cases", ylab="Cumulative", main="", type="l")
+lines(c(0,sum(valid.df$TREATED4OPIOIDS))~c(0, dim(valid.df)[1]), lty=2)
+```
+
+
+
+```{r}
+# create factors with value labels
+Opioids.df$catag3 <- factor(Opioids.df$catag3,levels=c(1,2,3,4,5),
+                      labels=c("minor","youngadult","midadult","oldadult","old"))
+
+
+notrt<-Opioids.df$TREATED4OPIOIDS=="0"
+# grouped by age (indicated by color)
+qplot(notrt, data=Opioids.df, geom="density", fill=catag3, alpha=I(.5), main="Distribution of Age", xlab="Treated", ylab="Density of Age")
+
+
+
+```
+
+```{r}
+
+Opioids.df<-read.csv("Narrowed Project Data.csv", header=TRUE)
+
+herfreq<-Opioids.df[Opioids.df$heryrtot!=985 & Opioids.df$heryrtot!=991 & Opioids.df$heryrtot!=993 & Opioids.df$heryrtot!=994 & Opioids.df$heryrtot!=997 & Opioids.df$heryrtot!=998 , ]
+
+
+library(ggplot2)
+# Basic density
+p <- ggplot(herfreq, aes(x=heryrtot))+
+  geom_density(fill="lightblue")
+p
+# Add mean line
+p+ geom_vline(aes(xintercept=mean(heryrtot)),
+            color="black", linetype="dashed", size=1)
+
+
+
+
+```
+
+
+
+
+
+```{r}
+
+library(ggplot2)
+ggplot(factors.df, aes(x= TREATED4OPIOIDS,  group=govtprog)) + 
+  geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") +
+  geom_text(aes( label = scales::percent(..prop..),
+                 y= ..prop.. ), stat= "count", vjust = -.5) +
+  labs(y = "Percent", fill="TREATED4OPIOIDS") +
+  facet_grid(~govtprog) +
+  scale_y_continuous(labels = scales::percent)
+
+
+
+
+```
+
+
+
+
+#Labeling variable
+```{r}
+Opioids.df<-read.csv("Narrowed Project Data.csv", header = TRUE)
+Opioids.df$TREATED4OPIOIDS <- factor(Opioids.df$TREATED4OPIOIDS, levels = c(0, 1), 
+                            labels = c("NOT TREATED", "TREATED"))
+```
+
+
+#partition data
+```{r}
+set.seed(1)  
+train.index <- sample(c(1:dim(Opioids.df)[1]), dim(Opioids.df)[1]*0.8)  
+train.df <- Opioids.df[train.index, ]
+valid.df <- Opioids.df[-train.index, ]
+```
+
+
+
+Decision Tree
+```{r}
+auc.tree = rpart(TREATED4OPIOIDS ~ ., train.df, control = rpart.control(maxdepth =2 ), method="class", minbucket=20)
+prp(auc.tree, type = 1, extra = 1, split.font = 10, varlen = -10, round=1, box.palette = "GnYlRd")
+
+```
+
+
